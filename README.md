@@ -97,6 +97,134 @@ To git@github.com:k2works/chef_practice.git
 ```
 
 ## PHP環境を導入する
+### クックブックを作成する
+```bash
+$ knife cookbook create nginx -o ./site-cookbooks
+WARNING: No knife configuration file found
+** Creating cookbook nginx
+** Creating README for cookbook: nginx
+** Creating CHANGELOG for cookbook: nginx
+** Creating metadata for cookbook: nginx
+** Creating specs for cookbook: nginx
+```
+### レシピを作成する
+_site-cookbooks/nginx/recipes/default.rb_
+```ruby
+include_recipe "yum-epel"
+
+package "nginx" do
+  action :install
+end
+
+service "nginx" do
+  action [ :enable, :start ]
+  supports :status => true, :restart => true, :reload => true
+end
+```
+### Berksfileを編集する
+```bash
+$ cd cookbokks/chef_practice
+$ berks init
+   identical  Berksfile
+      create  Thorfile
+    conflict  chefignore
+Overwrite /Users/k2works/projects/github/chef_practice/cookbooks/chef_practice/chefignore? (enter "h" for help) [Ynaqdh] Y
+       force  chefignore
+      create  .gitignore
+         run  git init from "."
+      create  Gemfile
+      create  .kitchen.yml
+      append  Thorfile
+      create  test/integration/default
+      append  .gitignore
+      append  .gitignore
+      append  Gemfile
+      append  Gemfile
+You must run `bundle install' to fetch any new gems.
+      create  Vagrantfile
+Successfully initialized
+```
+_cookbooks/chef_practice/Berksfile_
+```yum
+source "https://api.berkshelf.com"
+
+metadata
+
+cookbook "yum-epel"
+cookbook "nginx", path: "../../site-cookbooks/nginx"
+```
+_cookbooks/chef_practice/metadata.rb_
+```ruby
+name             'chef_practice'
+maintainer       ''
+maintainer_email ''
+license          ''
+description      'Installs/Configures '
+long_description 'Installs/Configures '
+version          '0.1.0'
+```
+
+### berks vendorコマンド実行
+```bash
+$ berks vendor
+Resolving cookbook dependencies...
+Fetching 'chef_paractice' from source at .
+Fetching 'nginx' from source at ../../site-cookbooks/nginx
+Fetching cookbook index from https://api.berkshelf.com...
+Using chef_paractice (0.1.0) from source at .
+Using yum (3.2.0)
+Using nginx (0.1.0) from source at ../../site-cookbooks/nginx
+Using yum-epel (0.3.6)
+Vendoring chef_paractice (0.1.0) to /Users/k2works/projects/github/chef_practice/cookbooks/chef_practice/berks-cookbooks/chef_paractice
+Vendoring nginx (0.1.0) to /Users/k2works/projects/github/chef_practice/cookbooks/chef_practice/berks-cookbooks/nginx
+Vendoring yum (3.2.0) to /Users/k2works/projects/github/chef_practice/cookbooks/chef_practice/berks-cookbooks/yum
+Vendoring yum-epel (0.3.6) to /Users/k2works/projects/github/chef_practice/cookbooks/chef_practice/berks-cookbooks/yum-epel
+```
+### Vagrantfileを編集する
+_cookbooks/chef_practice/Vagrantfile_
+```ruby
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.require_version ">= 1.5.0"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  config.vm.provider :virtualbox do |vb|
+    vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+  end
+  config.vm.provision :shell, :path => "bootstrap.sh"
+
+  config.vm.hostname = "chef-practice-berkshelf"
+  config.vm.box = "opscode_centos-6.5"
+  config.vm.box_url = "http://opscode-vm-bento.s3.amazonaws.com/vagrant/virtualbox/opscode_centos-6.4_chef-provisionerless.box"
+  config.vm.network "private_network", ip: "192.168.33.10"
+
+  config.omnibus.chef_version = :latest
+
+  config.berkshelf.enabled = true
+
+  config.vm.provision :chef_solo do |chef|
+    chef.run_list = %w[
+        recipe[chef_practice::default]
+        recipe[yum-epel]
+        recipe[nginx]
+    ]
+  end
+end
+```
+_cookbooks/chef_practice/bootstrap.sh_
+```bash
+if [ ! $(grep single-request-reopen /etc/sysconfig/network) ]; then
+  echo RES_OPTIONS=single-request-reopen >> /etc/sysconfig/network && service network restart;
+fi
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
+yum update -y
+```
+### プロビジョニングを実行する
+```bash
+$ vagrant up --provision
+```
+### PHPを導入する
+
 
 ## Ruby環境を構築する
 
@@ -105,3 +233,4 @@ To git@github.com:k2works/chef_practice.git
 ## Fluentedを構築する
 
 # 参照
++ [Slow networking (due to IPv6?) on CentOS 6.x](https://github.com/mitchellh/vagrant/issues/1172)
