@@ -97,7 +97,8 @@ To git@github.com:k2works/chef_practice.git
 ```
 
 ## PHP環境を導入する
-### クックブックを作成する
+### nginxを導入する
+#### クックブックを作成する
 ```bash
 $ knife cookbook create nginx -o ./site-cookbooks
 WARNING: No knife configuration file found
@@ -107,7 +108,7 @@ WARNING: No knife configuration file found
 ** Creating metadata for cookbook: nginx
 ** Creating specs for cookbook: nginx
 ```
-### レシピを作成する
+#### レシピを作成する
 _site-cookbooks/nginx/recipes/default.rb_
 ```ruby
 include_recipe "yum-epel"
@@ -121,7 +122,7 @@ service "nginx" do
   supports :status => true, :restart => true, :reload => true
 end
 ```
-### Berksfileを編集する
+#### Berksfileを編集する
 ```bash
 $ cd cookbokks/chef_practice
 $ berks init
@@ -164,7 +165,7 @@ long_description 'Installs/Configures '
 version          '0.1.0'
 ```
 
-### berks vendorコマンド実行
+#### berks vendorコマンド実行
 ```bash
 $ berks vendor
 Resolving cookbook dependencies...
@@ -180,7 +181,7 @@ Vendoring nginx (0.1.0) to /Users/k2works/projects/github/chef_practice/cookbook
 Vendoring yum (3.2.0) to /Users/k2works/projects/github/chef_practice/cookbooks/chef_practice/berks-cookbooks/yum
 Vendoring yum-epel (0.3.6) to /Users/k2works/projects/github/chef_practice/cookbooks/chef_practice/berks-cookbooks/yum-epel
 ```
-### Vagrantfileを編集する
+#### Vagrantfileを編集する
 _cookbooks/chef_practice/Vagrantfile_
 ```ruby
 VAGRANTFILE_API_VERSION = "2"
@@ -219,12 +220,153 @@ fi
 echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
 yum update -y
 ```
-### プロビジョニングを実行する
+#### プロビジョニングを実行する
 ```bash
 $ vagrant up --provision
 ```
 ### PHPを導入する
+#### クックブックを作成する
+```bash
+$ knife cookbook create php-env -o ./site-cookbooks
+```
+#### レシピを作成する
+_site-cookbooks/php-env/recipes/default.rb_
+```ruby
+%w{php-fpm}.each do |pkg|
+  package pkg do
+    action :install
+    notifies :restart, "service[php-fpm]"
+  end
+end
 
+service "php-fpm" do
+  action [:enable, :start]
+end
+```
+#### Vagrantfileを編集する
+_cookbooks/chef_practice/Vagrantfile_
+```ruby
+・・・
+  config.vm.provision :chef_solo do |chef|
+    chef.run_list = %w[
+        recipe[chef_practice::default]
+        recipe[yum-epel]
+        recipe[nginx]
+        recipe[php-env]
+    ]
+  end
+end
+```
+#### Berksfileを編集する
+_cookbooks/chef_practice/Berksfile_
+```
+source "https://api.berkshelf.com"
+
+metadata
+
+cookbook "yum-epel"
+cookbook "nginx", path: "../../site-cookbooks/nginx"
+cookbook "php-env", path: "../../site-cookbooks/php-env"
+```
+#### プロビジョニングを実行する
+```bash
+$ berks update
+$ vagrant provision
+```
+#### nginxの設定を調整する
+_site-cookbooks/nginx/templates/default/nginx.conf.erb_
+#### レシピを修正する
+_site-cookbooks/nginx/recipes/default.rb_
+```ruby
+・・・
+template 'nginx.conf' do
+  path '/etc/nginx/nginx.conf'
+  source "nginx.conf.erb"
+  owner 'root'
+  group 'root'
+  mode '0644'
+  notifies :reload, "service[nginx]"
+end
+```
+_site-cookbooks/nginx/attributes/default.rb_
+```ruby
+site-cookbooks/nginx/attributes/default.rb
+```
+_cookbooks/chef_practice/Vagrantfile_
+```ruby
+・・・
+  config.vm.provision :chef_solo do |chef|
+    chef.json = {
+      nginx: {
+        env: ["php"]
+      }
+    }
+    chef.run_list = %w[
+        recipe[chef_practice::default]
+        recipe[yum-epel]
+        recipe[nginx]
+        recipe[php-env]
+    ]
+  end
+end
+```
+#### プロビジョニングを実行する
+```bash
+$ berks update
+$ vagrant provision
+```
+
+### OPcacheを導入する
+#### レシピを修正する
+_site-cookbooks/php-env/recipes/default.rb_
+```ruby
+%w{php-fpm php-pecl-zendopcache}.each do |pkg|
+  package pkg do
+    action :install
+    notifies :restart, "service[php-fpm]"
+  end
+end
+
+service "php-fpm" do
+  action [:enable, :start]
+end
+```
+#### プロビジョニングを実行する
+```bash
+$ berks update
+$ vagrant provision
+```
+#### 動作を確認
+ゲスト側でテスト用のPHPスクリプトを作成して確認
+_/usr/share/nginx/html/index.php_
+```php
+<?php
+phpinfo();
+?>
+```
+### PHP5.5をインストールする
+#### レシピを作成する
+_site-cookbooks/php-env/recipes/php55.rb_
+#### PHP5.3と共存しないようにVagrantfileを編集する
+_cookbooks/chef_practice/Vagrantfile_
+```ruby
+・・・
+  chef.run_list = %w[
+      recipe[chef_practice::default]
+      recipe[yum]
+      recipe[yum-epel]
+      recipe[nginx]
+      recipe[php-env::php55]
+  ]
+  end
+end
+```
+#### プロビジョニングを実行する
+```bash
+$ vagrant ssh -c "sudo yum remove php* -y"
+$ berks update
+$ vagrant provision
+```
 
 ## Ruby環境を構築する
 
