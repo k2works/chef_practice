@@ -503,7 +503,160 @@ $ vagrant provision
 $ vagrant ssh
 $ rbenv versions
 ```
+### Unicornとnginをインストールする
+#### レシピを修正する
+_site-cookbooks/ruby-env/recipes/default.rb_
+```ruby
+・・・
+execute "rbenv global #{node['ruby-env']['version']}" do
+  command "/home/#{node['ruby-env']['user']}/.rbenv/bin/rbenv global #{node['ruby-env']['version']}"
+  user node['ruby-env']['user']
+  group node['ruby-env']['group']
+  environment 'HOME' => "/home/#{node['ruby-env']['user']}"
+end
 
+%w{rbenv-rehash bundler}.each do |gem|
+  execute "gem install #{gem}" do
+    command "/home/#{node['ruby-env']['user']}/.rbenv/shims/gem install #{gem}"
+    user node['ruby-env']['user']
+    group node['ruby-env']['group']
+    environment 'HOME' => "/home/#{node['ruby-env']['user']}"
+    not_if "/home/#{node['ruby-env']['user']}/.rbenv/shims/gem list | grep #{gem}"
+  end
+・・・
+```
+#### テンプレートを修正する
+_site-cookbooks/nginx/templates/default/nginx.conf.erb_
+```ruby
+・・・
+<% if node['nginx']['env'].include?("ruby") %>
+upstream unicorn {
+  server unix:/tmp/unicorn.sock;
+}
+<% end %>
+・・・
+<% if node['nginx']['env'].include?("ruby") %>
+location /unicorn {
+  rewrite ^/unicorn/(.+) /$1 break;
+  proxy_pass http://unicorn/$1;
+}
+<% end %>
+・・・
+```
+
+#### Attributeで初期値を設定する
+_cookbooks/chef_practice/Vagrantfile_
+```
+・・・
+chef.json = {
+  nginx: {
+    env: ["php","ruby"]
+  }
+}
+・・・
+```
+
+#### プロビジョニングを実行する
+```bash
+$ berks update
+$ vagrant provision
+```
+
+#### 動作確認用にRuby on Railsのプロジェクトを作成する
+```bash
+$ vagrant ssh
+$ gem install rails -V
+$ rails new test_unicorn --skip-bundle
+$ bundle
+```
+#### Gemfileを修正／Bundlerを実行する
+ゲスト側のGemfileからgem 'unicorn'のコメントアウトを解除する。
+#### Unicornの設定ファイルを作成する
+ゲスト側のtest_unicornアプリ内に設定ファイルを作成する
+_config/unicorn.rb_
+```
+worker_processes 2 # this should be >= nr_cpus
+pid "/home/vagrant/test_unicorn/shared/pids/unicorn.pid"
+stderr_path "/home/vagrant/test_unicorn/shared/log/unicorn.log"
+stdout_path "/home/vagrant/test_unicorn/shared/log/unicorn.log"
+```
+#### Node.js導入のためにクックブックを作成する
+```bash
+$ knife cookbook create nodejs -o ./site-cookbooks
+WARNING: No knife configuration file found
+** Creating cookbook nodejs
+** Creating README for cookbook: nodejs
+** Creating CHANGELOG for cookbook: nodejs
+** Creating metadata for cookbook: nodejs
+** Creating specs for cookbook: nodejs
+```
+#### Node.js導入のためにBerksfileの修正をする
+_cookbooks/chef_practice/Berksfile_
+```
+cookbook "nodejs", path: "../../site-cookbooks/nodejs"
+```
+#### Node.js導入のためにクックブックを作成する
+_site-cookbooks/nodejs/recipes/default.rb_
+```ruby
+remote_file "/tmp/#{node['nodejs']['filename']}" do
+  source "#{node['nodejs']['remote_uri']}"
+end
+
+bash "install nodejs" do
+  user "root"
+  cwd "/tmp"
+  code <<-EOC
+    tar xvzf #{node['nodejs']['filename']}
+    cd #{node['nodejs']['dirname']}
+    make
+    make install
+  EOC
+end
+```
+#### Node.js導入のためにAttributeで初期値を設定する
+_site-cookbooks/nodejs/attributes/default.rb_
+```ruby
+default['nodejs']['version'] = "v0.10.26"
+default['nodejs']['dirname'] = "node-#{default['nodejs']['version']}"
+default['nodejs']['filename'] = "#{default['nodejs']['dirname']}.tar.gz"
+default['nodejs']['remote_uri'] = "http://nodejs.org/dist/#{default['nodejs']['version']}#{default['nodejs']['filename']}"
+```
+#### Node.js導入のためにVagerantfileを編集する
+_cookbooks/chef_practice/Vagrantfile_
+```
+・・・
+chef.run_list = %w[
+    recipe[chef_practice::default]
+    recipe[yum]
+    recipe[yum-epel]
+    recipe[nginx]
+    recipe[php-env::php55]
+    recipe[ruby-env]
+    recipe[nodejs]
+]
+・・・
+```
+#### Node.js導入のためにプロビジョニングを実行する
+```bash
+$ berks update
+$ vagrant provision
+```
+
+#### 動作確認する
+```bash
+$ vagrant ssh
+$ cd test_unicorn/
+$ mkdir -p shared/pids
+$ mkdir -p shared/log
+$ bundle exec unicorn -c config/unicorn.rb -D
+```
+ブラウザでhttp://192.168.33.10/unicornにアクセスして動作を確認する。  
+確認後ゲスト側でUnicornを停止させる
+```bash
+$ cat /home/vagrant/test_unicorn/shared/pids/unicorn.pid
+28024
+$ kill -QUIT 28024
+```
 ## MySQLを構築する
 
 ## Fluentedを構築する

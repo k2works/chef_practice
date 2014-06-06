@@ -24,7 +24,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.provision :chef_solo do |chef|
     chef.json = {
       nginx: {
-        env: ["php"]
+        env: ["php","ruby"]
       }
     }
     chef.run_list = %w[
@@ -34,6 +34,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         recipe[nginx]
         recipe[php-env::php55]
         recipe[ruby-env]
+        recipe[nodejs]
     ]
   end
 end
