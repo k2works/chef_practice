@@ -367,8 +367,107 @@ $ vagrant ssh -c "sudo yum remove php* -y"
 $ berks update
 $ vagrant provision
 ```
-
+#### 動作を確認
+ゲスト側のPHPのバージョン確認
+```bash
+$ vagrant ssh
+$ php -v
+```
+ゲスト側でテスト用のPHPスクリプトを作成して確認
+_/usr/share/nginx/html/index.php_
+```php
+<?php
+phpinfo();
+?>
+```
 ## Ruby環境を構築する
+#### Ruby用クックブックの作成
+```bash
+MacBook-Air@k2works:chef_practice (wip) $ knife cookbook create ruby-env -o ./site-cookbooks
+WARNING: No knife configuration file found
+** Creating cookbook ruby-env
+** Creating README for cookbook: ruby-env
+** Creating CHANGELOG for cookbook: ruby-env
+** Creating metadata for cookbook: ruby-env
+** Creating specs for cookbook: ruby-env
+```
+#### Berkshelfの設定
+_cookbooks/chef_practice/Berksfile_
+```ruby
+cookbook "ruby-env", path: "../../site-cookbooks/ruby-env"
+```
+#### プロビジョニングの設定
+_cookbooks/chef_practice/Vagrantfile_
+```
+・・・
+chef.run_list = %w[
+    recipe[chef_practice::default]
+    recipe[yum]
+    recipe[yum-epel]
+    recipe[nginx]
+    recipe[php-env::php55]
+    recipe[ruby-env]
+]
+end
+・・・
+```
+### rbenvでRubyをインストールする
+#### レシピを作成する
+_site-cookbooks/ruby-env/recipes/default.rb_
+```ruby
+%w{git openssl-devel sqlite-devel}.each do |pkg|
+  package pkg do
+    action :install
+  end
+end
+
+git "/home/#{node['ruby-env']['user']}/.rbenv" do
+  repository node["ruby-env"]["rbenv_url"]
+  action :sync
+  user node['ruby-env']['user']
+  group node['ruby-env']['group']
+end
+
+template ".bash_profile" do
+  source ".bash_profile.erb"
+  path "/home/#{node['ruby-env']['user']}/.bash_profile"
+  mode 0644
+  owner node['ruby-env']['user']
+  group node['ruby-env']['group']
+  not_if "grep rbenv ~/.bash_profile", :environment => { :'HOME' => "/home/#{node['ruby-env']['user']}"}
+end
+```
+
+#### Attributeで初期値を設定する
+_site-cookbooks/ruby-env/attributes/default.rb_
+```ruby
+default['ruby-env']['user'] = "vagrant"
+default['ruby-env']['group'] = "vagrant"
+default['ruby-env']['version'] = "2.1.1"
+default["ruby-env"]["rbenv_url"] = "https://github.com/sstephenson/rbenv"
+default["ruby-env"]["ruby-build_url"] = "https://github.com/sstephenson/ruby-build"
+```
+#### templateで環境変数を変更する
+_site-cookbooks/ruby-env/templates/default/.bash_profile.erb_
+```bash
+# .bash_profile
+
+# Get the aliases and functions
+if [ -f ~/.bashrc ]; then
+  . ~/bashrc
+fi
+
+# User specific environment and startup programs
+PATH=$PATH:$HOME/bin
+export PATH="$HOME/.rbenv/bin:$PATH"
+eval "$(rbenv init -)"
+```
+#### プロビジョニングを実行する
+```bash
+$ berks update
+$ vagrant provision
+```
+
 
 ## MySQLを構築する
 

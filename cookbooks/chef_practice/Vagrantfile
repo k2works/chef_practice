@@ -33,6 +33,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         recipe[yum-epel]
         recipe[nginx]
         recipe[php-env::php55]
+        recipe[ruby-env]
     ]
   end
 end
