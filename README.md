@@ -454,7 +454,7 @@ _site-cookbooks/ruby-env/templates/default/.bash_profile.erb_
 
 # Get the aliases and functions
 if [ -f ~/.bashrc ]; then
-  . ~/bashrc
+  . ~/.bashrc
 fi
 
 # User specific environment and startup programs
@@ -467,7 +467,42 @@ eval "$(rbenv init -)"
 $ berks update
 $ vagrant provision
 ```
+#### 動作確認する
+```bash
+$ vagrant ssh
+$ rbenv
+```
+#### ruby-buildをインストールする
 
+#### レシピを修正する
+_site-cookbooks/ruby-env/recipes/default.rb_
+```ruby
+・・・
+git "/home/#{node['ruby-env']['user']}/.rbenv/plugins/ruby-build" do
+  repository node["ruby-env"]["ruby-build_url"]
+  action :sync
+  user node['ruby-env']['user']
+  group node['ruby-env']['group']
+end
+
+execute "rbenv install #{node['ruby-env']['version']}" do
+  command "/home/#{node['ruby-env']['user']}/.rbenv/bin/rbenv install #{node['ruby-env']['version']}"
+  user node['ruby-env']['user']
+  group node['ruby-env']['group']
+  environment 'HOME' => "/home/#{node['ruby-env']['user']}"
+  not_if { File.exists?("/home/#{node['ruby-env']['user']}/.rbenv/versions/#{node['ruby-env']['version']}")}
+end
+```
+#### プロビジョニングを実行する
+```bash
+$ berks update
+$ vagrant provision
+```
+#### 動作を確認する
+```bash
+$ vagrant ssh
+$ rbenv versions
+```
 
 ## MySQLを構築する
 
