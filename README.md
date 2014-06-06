@@ -750,6 +750,121 @@ $ berks vendor
 $ vagrant up --provision
 ```
 ## <a name="5">Fluentedを構築する</a>
+### Fluentdを導入する
+#### クックブックを作成する
+```bash
+$ knife cookbook create fluentd -o ./site-cookbooks
+WARNING: No knife configuration file found
+** Creating cookbook fluentd
+** Creating README for cookbook: fluentd
+** Creating CHANGELOG for cookbook: fluentd
+** Creating metadata for cookbook: fluentd
+** Creating specs for cookbook: fluentd
+```
+#### Berksfileを編集する
+_cookbooks/chef_practice/Berksfile_
+```
+cookbooks/chef_practice/Berksfile
+```
+#### レシピを作成する
+_site-cookbooks/fluentd/recipes/default.rb_
+```ruby
+#
+# Cookbook Name:: fluentd
+# Recipe:: default
+#
+# Copyright 2014, YOUR_COMPANY_NAME
+#
+# All rights reserved - Do Not Redistribute
+#
+if(node['fluentd']['installer'] == "rpm")
+  # install from rpm(omnibus installer)
+  execute "install td-agent by using rpm" do
+    command "curl -L http://toolbelt.treasure-data.com/sh/install-redhat.sh | sh"
+  end
+  template "fluent.conf.erb" do
+    path "/etc/td-agent/td-agent.conf"
+    source "fluent.conf.erb"
+    owner "root"
+    group "root"
+    mode  "0644"
+    notifies :restart, "service[td-agent]"
+  end
+  service "td-agent" do
+    action [:enable, :start]
+  end
+else
+  # install from rubygems
+  execute "gem install fluentd" do
+    command "/home/#{node['fluentd']['user']}/.rbenv/shims/gem install fluentd --no-rdoc"
+    user node['fluentd']['user']
+    group node['fluentd']['group']
+    environment 'HOME' => "/home/#{node['fluentd']['user']}"
+  end
+  execute "fluentd --setup ./fluent" do
+    command "/home/#{node['fluentd']['user']}/.rbenv/shims/fluentd --setup/home/#{node['fluentd']['user']}/fluent"
+    user node['fluentd']['user']
+    group node['fluentd']['group']
+    environment 'HOME' => "/home/#{node['fluentd']['user']}"
+    not_if { File.exists?("/home/#{node['fluentd']['user']}/fluent")}
+  end
+end
+```
+#### Attributeで初期値を設定する
+_site-cookbooks/fluentd/attributes/default.rb_
+```
+default['fluentd']['installer'] = "gem"
+default['fluentd']['user'] = "vagrant"
+default['fluentd']['group'] = "vagrant"
+```
+_cookbooks/chef_practice/Vagrantfile_
+```ruby
+・・・
+chef.run_list = %w[
+    recipe[chef_practice::default]
+    recipe[yum]
+    recipe[yum-epel]
+    recipe[nginx]
+    recipe[php-env::php55]
+    recipe[ruby-env]
+    recipe[nodejs]
+    recipe[fluentd]
+]
+・・・
+```
+#### プロビジョニングを実行する
+```bash
+$ berks update
+$ vagrant provision
+```
+#### RubyGemsからインストールしたFluentdを起動する
+```bash
+$ vagrant ssh
+$ fluentd -c ./fluent/fluent.conf -vv &
+```
+
+#### RPMからインストール
+_site-cookbooks/fluentd/templates/default/fluent.conf.erb_を追加  
+_site-cookbooks/fluentd/attributes/default.rb_を編集
+```ruby
+default['fluentd']['installer'] = "rpm"
+default['fluentd']['user'] = "vagrant"
+default['fluentd']['group'] = "vagrant"
+```
+#### プロビジョニングを実行する
+```bash
+$ berks update
+$ vagrant provision
+```
+#### RPMからインストールしたFluentdを起動する
+```bash
+$ vagrant ssh
+$ sudo service td-agent restart
+Shutting down td-agent:                                    [  OK  ]
+Starting td-agent:                                         [  OK  ]
+```
+
 
 # 参照
 + [Slow networking (due to IPv6?) on CentOS 6.x](https://github.com/mitchellh/vagrant/issues/1172)
++ [vagrantでmountエラーの解決方法](http://qiita.com/osamu1203/items/10e19c74c912d303ca0b)
