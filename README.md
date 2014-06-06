@@ -22,7 +22,7 @@
 + [Fluentedを構築する](#5)
 
 # 詳細
-## セットアップ
+## <a name="1">セットアップ</a>
 ```bash
 $ chef generate app chef_practice
 Compiling Cookbooks...
@@ -96,7 +96,7 @@ To git@github.com:k2works/chef_practice.git
  * [new branch]      master -> master
 ```
 
-## PHP環境を導入する
+## <a name="2">PHP環境を導入する</a>
 ### nginxを導入する
 #### クックブックを作成する
 ```bash
@@ -380,7 +380,7 @@ _/usr/share/nginx/html/index.php_
 phpinfo();
 ?>
 ```
-## Ruby環境を構築する
+## <a name="3">Ruby環境を構築する</a>
 #### Ruby用クックブックの作成
 ```bash
 MacBook-Air@k2works:chef_practice (wip) $ knife cookbook create ruby-env -o ./site-cookbooks
@@ -657,9 +657,99 @@ $ cat /home/vagrant/test_unicorn/shared/pids/unicorn.pid
 28024
 $ kill -QUIT 28024
 ```
-## MySQLを構築する
+## <a name="4">MySQLを構築する</a>
+### セットアップ
+```bash
+$ cd cookbooks
+$ chef generate cookbook chef_practice_db
+$ cd chef_practice_db
+$ berks init
+```
+### MySQLを導入する
+#### クックブックを作成する
+```bash
+$ knife cookbook create mysql -o ./site-cookbooks
+WARNING: No knife configuration file found
+** Creating cookbook mysql
+** Creating README for cookbook: mysql
+** Creating CHANGELOG for cookbook: mysql
+** Creating metadata for cookbook: mysql
+** Creating specs for cookbook: mysql
+```
+_cookbooks/chef_practice_db/Berksfile_
+```
+cookbook "mysql", path: "../../site-cookbooks/mysql"
+```
+#### Attributeで初期値を設定する
+_site-cookbooks/mysql/attributes/default.rb_
+```ruby
+default['mysql']['user'] = "vagrant"
+default['mysql']['group'] = "vagrant"
+```
+#### レシピを作成する
+_site-cookbooks/mysql/recipes/default.rb_
+```ruby
+%w{mysql mysql-server}.each do |pkg|
+  package pkg do
+    action :install
+  end
+end
 
-## Fluentedを構築する
+service "mysqld" do
+  action [:enable, :start]
+end
+
+execute "set root password" do
+  command "mysqladmin -u root password '#{node['mysql']['server_root_password']}'"
+  only_if "mysql -u root -e 'show databases;'"
+end
+```
+#### Vagrantfileを編集する
+```
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Vagrantfile API/syntax version. Don't touch unless you know what you're doing!
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.require_version ">= 1.5.0"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  config.vm.provider :virtualbox do |vb|
+    vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+  end
+  config.vm.provision :shell, :path => "bootstrap.sh"
+
+  config.vm.hostname = "chef-practice-berkshelf-db"
+  config.vm.box = "opscode_centos-6.5"
+  config.vm.box_url = "http://opscode-vm-bento.s3.amazonaws.com/vagrant/virtualbox/opscode_centos-6.4_chef-provisionerless.box"
+  config.vm.network "private_network", ip: "192.168.33.11"
+
+  config.omnibus.chef_version = :latest
+
+  config.berkshelf.enabled = true
+
+  config.vm.provision :chef_solo do |chef|
+    chef.json = {
+      mysql: {
+        server_root_password: 'rootpass'
+      }
+    }
+    chef.run_list = %w[
+        recipe[chef_practice_db::default]
+        recipe[mysql]
+    ]
+  end
+end
+```
+
+#### MySQL導入のためにプロビジョニングを実行する
+```bash
+$ cd cookbooks/chef_practice_db
+$ berks vendor
+$ vagrant up --provision
+```
+## <a name="5">Fluentedを構築する</a>
 
 # 参照
 + [Slow networking (due to IPv6?) on CentOS 6.x](https://github.com/mitchellh/vagrant/issues/1172)
